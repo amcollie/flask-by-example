@@ -5,3 +5,5 @@ env
 .coverage
 .vscode
 .env
+pg_data
+database.env
