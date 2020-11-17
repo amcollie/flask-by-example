@@ -10,6 +10,9 @@ python-dotenv = "*"
 psycopg2-binary = "*"
 flask-sqlalchemy = "*"
 flask-migrate = "*"
+requests = "*"
+beautifulsoup4 = "*"
+nltk = "*"
 
 [dev-packages]
 pylint = "*"
