@@ -1,1 +1,1 @@
-web: gunicon app:app
+web: sh heroku.sh
