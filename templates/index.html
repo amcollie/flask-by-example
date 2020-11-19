@@ -46,9 +46,9 @@
               </thead>
               <tbody>
                 {% raw %}
-                <tr ng-repeat="(key, val) in wordcounts">
-                  <td>{{ key }}</td>
-                  <td>{{ val }}</td>
+                <tr ng-repeat="element in wordcounts">
+                  <td>{{ element[0] }}</td>
+                  <td>{{ element[1] }}</td>
                 </tr>
                 {% endraw %}
               </tbody>
