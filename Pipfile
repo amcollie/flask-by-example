@@ -13,6 +13,8 @@ flask-migrate = "*"
 requests = "*"
 beautifulsoup4 = "*"
 nltk = "*"
+redis = "*"
+rq = "*"
 
 [dev-packages]
 pylint = "*"

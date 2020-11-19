@@ -8,7 +8,18 @@ services:
     ports: 
       - "5432:5432"
     volumes: 
-      - pg-data:/var/lib/postgresql/data/
+      - $PWD/pg-data:/var/lib/postgresql/data/
+
+  redis:
+    image: redis:6.0.9-alpine
+    restart: unless-stopped
+    ports:
+      - 127.0.0.1:6379:6379
+    volumes:
+      - $PWD/redis-data:/data/db
+      - $PWD/sysctl.conf:/etc/sysctl.conf
 
 volumes: 
   pg-data:
+  redis-data:
+  sysctl.conf:

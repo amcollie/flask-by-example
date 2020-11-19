@@ -3,73 +3,109 @@ import requests
 import operator
 import re
 import nltk
+import json
 
 
-from flask import Flask, render_template, request
+from flask import Flask, render_template, request, jsonify
 from flask_sqlalchemy import SQLAlchemy
-from stop_words import stops
 from collections import Counter
 from bs4 import BeautifulSoup
-
+from rq import Queue
+from rq.job import Job
 from dotenv import load_dotenv, find_dotenv
+
+from stop_words import stops
+from worker import redis_client
 
 load_dotenv(find_dotenv())
 
 app = Flask(__name__)
 app.config.from_object(os.environ.get('APP_SETTINGS'))
 app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL')
-# app.config['SQLALCHEMY_DATABASE_URI'] = 'postgresql://wordcount_app:superfly73@localhost:5432/wordcount_dev'
-app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = True
 
 db = SQLAlchemy(app)
+
+q = Queue(connection=redis_client)
 
 from models import Result
 
 
 @app.route('/', methods=['GET', 'POST'])
 def index():
+    return render_template('index.html')
+
+
+@app.route('/start', methods=['POST'])
+def get_counts():
+    data = json.loads(request.data.decode())
+
+    url = data['url']
+    if not url[:8].startswith(('https://', 'http://')):
+        url = f'http://{ url }'
+
+    job = q.enqueue(
+        count_and_save_words,
+        url,
+        result_ttl=5000
+    )
+
+    return job.get_id()
+
+
+
+
+
+@app.route('/results/<job_key>', methods=['GET'])
+def get_results(job_key):
+    job = Job.fetch(job_key, connection=redis_client)
+
+    if job.is_finished:
+        result = Result.query.filter_by(id=job.result).first()
+        results = sorted(
+            result.result_no_stop_words.items(),
+            key=operator.itemgetter(1),
+            reverse=True
+        )[:10]
+        return jsonify(results)
+    else:
+        return 'Nay!', 202
+
+
+def count_and_save_words(url):
     errors = []
-    results = {}
 
-    if request.method == 'POST':
-        try:
-            url = request.form['url']
-            r = requests.get(url)
-        except EXception as e:
-            errors.append(
-                "Unable to get URL. Please make sure it's valid and try again."
-            )
+    try:
+        r = requests.get(url)
+    except:
+        errors.append(
+            "Unable to get URL. Please make sure it's valid and try again."
+        )
 
-        if r:
-            raw  = BeautifulSoup(r.text, 'html.parser').get_text()
-            nltk.data.path.append('./nltk_data/')
-            tokens = nltk.word_tokenize(raw)
-            text = nltk.Text(tokens)
+    raw  = BeautifulSoup(r.text, 'html.parser').get_text()
+    nltk.data.path.append('./nltk_data/')
+    tokens = nltk.word_tokenize(raw)
+    text = nltk.Text(tokens)
 
-            non_punct = re.compile('.*[A-Za-z].*')
-            raw_words = [ w for w in text if non_punct.match(w)]
-            raw_words_count = Counter(raw_words)
+    non_punct = re.compile('.*[A-Za-z].*')
+    raw_words = [ w for w in text if non_punct.match(w) ]
+    raw_words_count = Counter(raw_words)
 
-            no_stop_words = [w for w in raw_words if w.lower() not in stops]
-            no_stop_words_count = Counter(no_stop_words)
+    no_stop_words = [ w for w in raw_words if w.lower() not in stops ]
+    no_stop_words_count = Counter(no_stop_words)
 
-            results = sorted(
-                no_stop_words_count.items(),
-                key=operator.itemgetter(1),
-                reverse=True
-            )
-
-            try:
-                result = Result(
-                    url=url,
-                    result_all=raw_words_count,
-                    result_no_stop_words=no_stop_words_count
-                )
-                db.session.add(result)
-                db.session.commit()
-            except Exception as e:
-                errors.append('Unable to add item to database.')
-    return render_template('index.html', errors=errors, results=results)
+    try:
+        result = Result(
+            url=url,
+            result_all=raw_words_count,
+            result_no_stop_words=no_stop_words_count
+        )
+        db.session.add(result)
+        db.session.commit()
+        return result.id
+    except:
+        errors.append('Unable to add item to database.')
+        return {"error": errors}
 
 
 if __name__ == '__main__':
